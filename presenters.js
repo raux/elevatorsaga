@@ -39,19 +39,23 @@ function presentStats($parent, world) {
 };
 
 function presentChallenge($parent, challenge, app, world, worldController, challengeNum, challengeTempl) {
+    var remoteRuntime = app.runtimeLanguage && app.runtimeLanguage !== "javascript";
     var $challenge = $(riot.render(challengeTempl, {
         challenge: challenge,
         num: challengeNum,
         timeScale: worldController.timeScale.toFixed(0) + "x",
-        startButtonText: world.challengeEnded ? "<i class='fa fa-repeat'></i> Restart" : (worldController.isPaused ? "Start" : "Pause")
+        startButtonText: remoteRuntime ? "Run with Apply" : (world.challengeEnded ? "<i class='fa fa-repeat'></i> Restart" : (worldController.isPaused ? "Start" : "Pause"))
     }));
     $parent.html($challenge);
+    $parent.find(".startstop").prop("disabled", remoteRuntime);
+    $parent.find(".timescale_increase, .timescale_decrease").toggleClass("disabled", remoteRuntime);
 
     $parent.find(".startstop").on("click", function() {
         app.startStopOrRestart();
     });
     $parent.find(".timescale_increase").on("click", function(e) {
         e.preventDefault();
+        if(remoteRuntime) { return; }
         if(worldController.timeScale < 40) {
             var timeScale = Math.round(worldController.timeScale * 1.618);
             worldController.setTimeScale(timeScale);
@@ -59,6 +63,7 @@ function presentChallenge($parent, challenge, app, world, worldController, chall
     });
     $parent.find(".timescale_decrease").on("click", function(e) {
         e.preventDefault();
+        if(remoteRuntime) { return; }
         var timeScale = Math.round(worldController.timeScale / 1.618);
         worldController.setTimeScale(timeScale);
     });

@@ -376,3 +376,70 @@ button.right {
 .doctable td {
     font: 13px Consolas, Monaco, monospace;
 }
+
+.languagebar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.languagebar label {
+    font-weight: bold;
+}
+
+.languagebar select {
+    padding: 5px 8px;
+    border: 1px solid #aaa;
+    background: white;
+    font: 14px Consolas, Monaco, monospace;
+}
+
+.runtime-status {
+    color: #555;
+    font-size: 13px;
+}
+
+.runtime-warning {
+    padding: 7px 12px;
+    color: #704d00;
+    background: #fff4d1;
+    border: 1px solid #e5c86d;
+    border-top: 0;
+    font-size: 12px;
+}
+
+.runtime-output {
+    margin: 10px 0;
+    padding: 0 12px;
+    border-left: 4px solid transparent;
+}
+
+.runtime-output.success {
+    color: #176b2c;
+    border-left-color: #2a9d4b;
+}
+
+.runtime-output.error {
+    color: #9d1d1d;
+    border-left-color: #c43a3a;
+}
+
+.runtime-output pre {
+    max-height: 260px;
+    overflow: auto;
+    padding: 10px;
+    color: #333;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    white-space: pre-wrap;
+}
+
+.timescale_increase.disabled,
+.timescale_decrease.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}

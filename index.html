@@ -100,6 +100,60 @@
     }
 }
     </script>
+    <script type="text/plain" id="default-python-implementation">
+def init(elevators, floors):
+    for elevator in elevators:
+        def register(elev):
+            elev.on("idle", lambda: elev.go_to_floor(0))
+            elev.on("floor_button_pressed", lambda floor_num: elev.go_to_floor(floor_num))
+        register(elevator)
+
+    for floor in floors:
+        def register_floor(current_floor):
+            def call_elevator(_floor):
+                elevator = min(elevators, key=lambda elev: len(elev.destination_queue))
+                elevator.go_to_floor(current_floor.level)
+            current_floor.on("up_button_pressed down_button_pressed", call_elevator)
+        register_floor(floor)
+
+
+def update(dt, elevators, floors):
+    pass
+    </script>
+    <script type="text/plain" id="default-java-implementation">
+import elevatorsaga.*;
+import java.util.List;
+
+public class UserStrategy implements ElevatorStrategy {
+    @Override
+    public void init(List<ElevatorInterface> elevators, List<Floor> floors) {
+        for (ElevatorInterface elevator : elevators) {
+            elevator.on("idle", args -> elevator.goToFloor(0));
+            elevator.on("floor_button_pressed", args -> {
+                elevator.goToFloor((Integer) args[0]);
+            });
+        }
+
+        for (Floor floor : floors) {
+            Observable.EventListener callElevator = args -> {
+                ElevatorInterface best = elevators.get(0);
+                for (ElevatorInterface candidate : elevators) {
+                    if (candidate.destinationQueue.size() < best.destinationQueue.size()) {
+                        best = candidate;
+                    }
+                }
+                best.goToFloor(floor.level);
+            };
+            floor.on("up_button_pressed down_button_pressed", callElevator);
+        }
+    }
+
+    @Override
+    public void update(double dt, List<ElevatorInterface> elevators, List<Floor> floors) {
+        // Event-driven strategy; no polling is required.
+    }
+}
+    </script>
     <script type="text/plain" id="devtest-elev-implementation">
 {
     init: function(elevators, floors) {
@@ -165,7 +219,20 @@
             </div>
         </div>
 
+        <div class="languagebar">
+            <label for="language_selector">Strategy language</label>
+            <select id="language_selector">
+                <option value="python" selected>Python (default, local backend)</option>
+                <option value="javascript">JavaScript (browser visualization)</option>
+                <option value="java">Java (local backend)</option>
+            </select>
+            <span id="runtime_status" class="runtime-status">Python runs headlessly on the local backend when Apply is pressed.</span>
+        </div>
+        <div class="runtime-warning">
+            Python and Java strategies run headlessly on this computer with your user permissions. Only run code you trust.
+        </div>
         <div class="codestatus"></div>
+        <div id="runtime_output" class="runtime-output" aria-live="polite"></div>
         <div class="code">
             <textarea name="Code" id="code"></textarea>
         </div>
