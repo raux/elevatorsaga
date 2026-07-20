@@ -178,8 +178,11 @@ class ReplayController:
         self.accumulator = 0.0
         self.world_width = 420.0
         self.world_height = 200.0
-        self.elevator_elements: list[Any] = []
-        self.user_elements: dict[int, Any] = {}
+        self.floor_count = 4
+        self.scene_height = 420
+        self.elevator_elements: list[dict[str, Any]] = []
+        self.user_elements: dict[int, dict[str, Any]] = {}
+        self.user_states: dict[int, str] = {}
         self.visible_users: set[int] = set()
 
         self.scene = None
@@ -201,23 +204,62 @@ class ReplayController:
         floor_count = int(scene["floorCount"])
         floor_height = float(scene["floorHeight"])
         capacities = scene["elevatorCapacities"]
+        self.floor_count = floor_count
         self.world_height = max(floor_count * floor_height, 1.0)
-        self.world_width = max(420.0, 220.0 + sum(20.0 + float(capacity) * 10.0 for capacity in capacities))
+        elevator_span = sum(20.0 + float(capacity) * 10.0 for capacity in capacities)
+        self.world_width = max(350.0, 240.0 + elevator_span)
+        self.scene_height = max(330, min(720, floor_count * 72))
+        floor_pixels = self.scene_height / floor_count
+        car_height = max(34.0, floor_pixels - 8.0)
         self.elevator_elements = []
         self.user_elements = {}
+        self.user_states = {}
         self.visible_users = set()
 
         self.scene.clear()
+        self.scene.style(replace=self.scene_style())
+        first_frame = trace["frames"][0]
         with self.scene:
             for floor in range(floor_count):
                 y = (floor_count - 1 - floor) * floor_height
                 top = self.y_percent(y)
-                ui.element("div").classes("floor-line").style(replace=f"top:{top:.3f}%;")
-                ui.label(str(floor)).classes("floor-label").style(replace=f"top:{max(0, top - 3):.3f}%;")
-            for index, capacity in enumerate(capacities):
-                elevator = ui.element("div").classes("elevator-car")
+                with ui.element("div").classes("floor-band").style(
+                    replace=f"top:{top:.3f}%;height:{100.0 / floor_count:.3f}%;"
+                ):
+                    ui.label(str(floor)).classes("floor-label")
+                    ui.element("div").classes("floor-call-panel").tooltip(f"Floor {floor}")
+
+            for index, (capacity, initial) in enumerate(zip(capacities, first_frame["elevators"])):
+                car_width = max(54.0, min(94.0, 28.0 + float(capacity) * 10.0))
+                left = self.x_percent(float(initial["x"]))
+                ui.element("div").classes("elevator-shaft").style(
+                    replace=f"left:{left:.3f}%;width:{car_width:.1f}px;"
+                )
+                with ui.element("div").classes("elevator-car is-idle").style(
+                    replace=(
+                        f"left:{left:.3f}%;top:{self.y_percent(float(initial['y'])):.3f}%;"
+                        f"width:{car_width:.1f}px;height:{car_height:.1f}px;"
+                    )
+                ) as elevator:
+                    with ui.element("div").classes("elevator-display"):
+                        up_indicator = ui.label("▲").classes("direction-light")
+                        floor_indicator = ui.label(str(initial.get("floor", 0))).classes("car-floor")
+                        down_indicator = ui.label("▼").classes("direction-light")
+                    ui.element("div").classes("elevator-cab")
+                    ui.element("div").classes("elevator-door door-left")
+                    ui.element("div").classes("elevator-door door-right")
+                    with ui.element("div").classes("elevator-load-track"):
+                        load_indicator = ui.element("div").classes("elevator-load")
                 elevator.tooltip(f"Elevator {index + 1}, capacity {capacity}")
-                self.elevator_elements.append(elevator)
+                self.elevator_elements.append(
+                    {
+                        "root": elevator,
+                        "floor": floor_indicator,
+                        "up": up_indicator,
+                        "down": down_indicator,
+                        "load": load_indicator,
+                    }
+                )
 
         self.progress.props(f"max={max(0, len(trace['frames']) - 1)}")
         self.progress.set_value(0)
@@ -225,21 +267,35 @@ class ReplayController:
         self.render_frame(0)
 
     def x_percent(self, x: float) -> float:
-        return max(0.0, min(94.0, x / self.world_width * 100.0))
+        return max(5.0, min(96.0, 4.0 + x / self.world_width * 92.0))
 
     def y_percent(self, y: float) -> float:
-        return max(1.0, min(92.0, y / self.world_height * 92.0 + 2.0))
+        return max(0.0, min(100.0, y / self.world_height * 100.0))
+
+    def scene_style(self) -> str:
+        sample_every = SAMPLE_EVERY
+        if self.trace:
+            sample_every = float(self.trace["scene"].get("sampleEvery", SAMPLE_EVERY))
+        duration_ms = max(45.0, min(180.0, sample_every / max(self.speed, 0.1) * 1000.0))
+        return f"height:{self.scene_height}px;--motion-duration:{duration_ms:.0f}ms;"
+
+    def set_speed(self, speed: float) -> None:
+        self.speed = speed
+        if self.scene:
+            self.scene.style(replace=self.scene_style())
 
     def elevator_style(self, elevator: dict[str, Any]) -> str:
-        return f"left:{self.x_percent(float(elevator['x'])):.3f}%;top:{self.y_percent(float(elevator['y'])):.3f}%;"
+        return (
+            f"left:{self.x_percent(float(elevator['x'])):.3f}%;"
+            f"top:{self.y_percent(float(elevator['y'])):.3f}%;"
+        )
 
     def user_style(self, user: dict[str, Any]) -> str:
-        color = {"female": "#e76f9a", "child": "#f4a261"}.get(user.get("type"), "#3a86ff")
-        opacity = "0.5" if user.get("done") else "1"
+        color = {"female": "#ff70a6", "child": "#ffb347"}.get(user.get("type"), "#5bb8ff")
         return (
             f"left:{self.x_percent(float(user['x'])):.3f}%;"
             f"top:{self.y_percent(float(user['y'])):.3f}%;"
-            f"background:{color};opacity:{opacity};"
+            f"--person-color:{color};"
         )
 
     def render_frame(self, index: int) -> None:
@@ -249,25 +305,54 @@ class ReplayController:
         self.frame_index = max(0, min(index, len(frames) - 1))
         frame = frames[self.frame_index]
 
-        for elevator_data, element in zip(frame["elevators"], self.elevator_elements):
-            element.style(replace=self.elevator_style(elevator_data))
+        for elevator_data, parts in zip(frame["elevators"], self.elevator_elements):
+            elevator = parts["root"]
+            elevator.style(replace=self.elevator_style(elevator_data))
+            moving = bool(elevator_data.get("moving", False))
+            elevator.classes(
+                add="is-moving" if moving else "is-idle",
+                remove="is-idle" if moving else "is-moving",
+            )
+            parts["floor"].set_text(str(elevator_data.get("floor", 0)))
+            parts["up"].style(
+                replace="color:#52f59b;opacity:1;" if elevator_data.get("up") else "opacity:.16;"
+            )
+            parts["down"].style(
+                replace="color:#52f59b;opacity:1;" if elevator_data.get("down") else "opacity:.16;"
+            )
+            load = max(0.0, min(1.0, float(elevator_data.get("load", 0.0))))
+            load_color = "#ff5d73" if load > 0.85 else "#52f59b"
+            parts["load"].style(replace=f"width:{load * 100:.1f}%;background:{load_color};")
 
         current_users = set()
         for user in frame["users"]:
             user_id = int(user["id"])
             current_users.add(user_id)
+            state = "leaving" if user.get("done") else "riding" if user.get("riding") else "waiting"
             if user_id not in self.user_elements:
+                direction = "↑" if int(user["to"]) > int(user["from"]) else "↓"
                 with self.scene:
-                    element = ui.element("div").classes("passenger")
-                    element.tooltip(f"Passenger → floor {user['to']}")
-                self.user_elements[user_id] = element
-            element = self.user_elements[user_id]
+                    with ui.element("div").classes(f"passenger is-{state}") as element:
+                        ui.element("div").classes("passenger-head")
+                        ui.element("div").classes("passenger-body")
+                        ui.label(f"{direction}{user['to']}").classes("passenger-destination")
+                    element.tooltip(f"Passenger: floor {user['from']} → {user['to']}")
+                self.user_elements[user_id] = {"root": element}
+                self.user_states[user_id] = state
+            parts = self.user_elements[user_id]
+            element = parts["root"]
+            if self.user_states[user_id] != state:
+                element.classes(
+                    add=f"is-{state}",
+                    remove="is-waiting is-riding is-leaving",
+                )
+                self.user_states[user_id] = state
             element.style(replace=self.user_style(user))
             if user_id not in self.visible_users:
                 element.set_visibility(True)
 
         for user_id in self.visible_users - current_users:
-            self.user_elements[user_id].set_visibility(False)
+            self.user_elements[user_id]["root"].set_visibility(False)
         self.visible_users = current_users
 
         stats = frame["stats"]
@@ -313,12 +398,107 @@ ui.add_css(
     .app-shell { width: min(1500px, 96vw); margin: 0 auto; }
     .control-card, .editor-card, .visual-card { background: white; border-radius: 12px; box-shadow: 0 5px 20px rgba(25,45,70,.10); }
     .code-editor textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; font-size: 13px; line-height: 1.35; min-height: 520px !important; }
-    .elevator-scene { position: relative; width: 100%; height: 560px; overflow: hidden; border-radius: 10px; background: linear-gradient(#16253b, #273b55); border: 4px solid #122033; }
-    .floor-line { position: absolute; left: 4%; right: 2%; height: 2px; background: rgba(255,255,255,.25); }
-    .floor-label { position: absolute; left: 1%; color: rgba(255,255,255,.65); font-weight: 700; }
-    .elevator-car { position: absolute; width: 44px; height: 42px; border: 3px solid #f1c453; border-radius: 5px 5px 2px 2px; background: #425b76; transform: translateY(-3px); transition: left .06s linear, top .06s linear; }
-    .elevator-car::after { content: '↕'; color: #f1c453; font-weight: bold; display: block; text-align: center; line-height: 36px; }
-    .passenger { position: absolute; width: 11px; height: 15px; border-radius: 50% 50% 35% 35%; border: 1px solid rgba(255,255,255,.8); transition: left .06s linear, top .06s linear; }
+    .elevator-scene {
+        position: relative; isolation: isolate; width: 100%; min-height: 330px; overflow: hidden;
+        border: 4px solid #101a2a; border-radius: 12px;
+        background: radial-gradient(circle at 22% 12%, rgba(67,116,164,.22), transparent 30%),
+                    linear-gradient(135deg, #14263c 0%, #1c344d 54%, #102236 100%);
+        box-shadow: inset 0 0 45px rgba(0,0,0,.34);
+    }
+    .floor-band {
+        position: absolute; left: 0; right: 0; z-index: 0;
+        border-bottom: 2px solid rgba(211,228,244,.45);
+        background: linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.065));
+    }
+    .floor-band::after {
+        content: ''; position: absolute; left: 74px; right: 0; bottom: 0; height: 7px;
+        background: linear-gradient(180deg, #40576c, #26394b); box-shadow: 0 -1px rgba(255,255,255,.16);
+    }
+    .floor-label {
+        position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+        width: 42px; color: rgba(225,239,252,.70); font-size: 24px; font-weight: 800;
+        text-align: center; font-variant-numeric: tabular-nums;
+    }
+    .floor-call-panel {
+        position: absolute; left: 58px; top: 50%; width: 9px; height: 24px;
+        transform: translateY(-50%); border: 1px solid #8095a8; border-radius: 5px;
+        background: radial-gradient(circle at 50% 30%, #6af0a4 0 2px, #23394b 3px);
+        box-shadow: 0 2px 5px rgba(0,0,0,.35);
+    }
+    .elevator-shaft {
+        position: absolute; top: 0; bottom: 0; z-index: 1;
+        border-left: 2px solid rgba(11,20,30,.74); border-right: 2px solid rgba(11,20,30,.74);
+        background: repeating-linear-gradient(90deg, rgba(0,0,0,.20) 0 2px, rgba(255,255,255,.018) 2px 12px);
+        transform: translateX(-2px);
+    }
+    .elevator-car {
+        position: absolute; z-index: 5; overflow: visible; box-sizing: border-box;
+        border: 3px solid #efc866; border-radius: 7px 7px 3px 3px;
+        background: linear-gradient(145deg, #466781, #243d55); color: white;
+        box-shadow: 0 5px 12px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.12);
+        transition: left var(--motion-duration) linear, top var(--motion-duration) linear, box-shadow .18s ease;
+        will-change: left, top;
+    }
+    .elevator-car.is-moving { box-shadow: 0 9px 18px rgba(0,0,0,.55), 0 0 13px rgba(239,200,102,.22); }
+    .elevator-display {
+        position: absolute; top: 3px; left: 50%; z-index: 9; transform: translateX(-50%);
+        display: flex; align-items: center; justify-content: center; gap: 4px;
+        min-width: 42px; height: 15px; padding: 0 5px; border-radius: 3px;
+        background: #111c25; box-shadow: inset 0 0 4px #000;
+    }
+    .elevator-display .q-label { line-height: 1; }
+    .direction-light { color: #52f59b; font-size: 7px; transition: opacity .15s ease; }
+    .car-floor { min-width: 12px; color: #f6d97e; font: 700 10px/1 ui-monospace, monospace; text-align: center; }
+    .elevator-cab { position: absolute; z-index: 1; left: 5px; right: 5px; top: 21px; bottom: 6px; background: linear-gradient(#abc1d0, #6f899d); border: 1px solid #d7e4ec; }
+    .elevator-door {
+        position: absolute; z-index: 4; top: 20px; bottom: 5px; width: calc(50% - 5px);
+        background: linear-gradient(90deg, #839aaa, #c1d0d9 48%, #738b9c);
+        border: 1px solid rgba(34,53,67,.72); transition: transform .22s cubic-bezier(.2,.8,.2,1);
+    }
+    .door-left { left: 5px; transform-origin: left center; }
+    .door-right { right: 5px; transform-origin: right center; }
+    .elevator-car.is-idle .door-left { transform: scaleX(.18); }
+    .elevator-car.is-idle .door-right { transform: scaleX(.18); }
+    .elevator-load-track { position: absolute; left: 5px; right: 5px; bottom: -7px; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(5,12,18,.68); }
+    .elevator-load { height: 100%; width: 0; border-radius: 3px; background: #52f59b; transition: width .18s ease, background .18s ease; }
+    .passenger {
+        position: absolute; z-index: 8; width: 18px; height: 29px; pointer-events: auto;
+        transform: translateX(-50%); transform-origin: center bottom;
+        transition: left var(--motion-duration) linear, top var(--motion-duration) linear, opacity .28s ease, filter .28s ease;
+        will-change: left, top; filter: drop-shadow(0 2px 2px rgba(0,0,0,.46));
+    }
+    .passenger-head {
+        position: absolute; left: 5px; top: 0; width: 9px; height: 9px; border-radius: 50%;
+        background: #ffd3b6; border: 1px solid rgba(32,37,45,.62); z-index: 2;
+    }
+    .passenger-body {
+        position: absolute; left: 3px; top: 8px; width: 13px; height: 14px; border-radius: 6px 6px 3px 3px;
+        background: var(--person-color); border: 1px solid rgba(255,255,255,.72);
+        box-shadow: inset 0 -3px rgba(0,0,0,.12);
+    }
+    .passenger-body::before, .passenger-body::after {
+        content: ''; position: absolute; top: 12px; width: 4px; height: 9px;
+        border-radius: 0 0 3px 3px; background: var(--person-color); border-bottom: 1px solid rgba(255,255,255,.65);
+    }
+    .passenger-body::before { left: 1px; }
+    .passenger-body::after { right: 1px; }
+    .passenger-destination {
+        position: absolute; left: 15px; top: -7px; min-width: 24px; padding: 1px 4px;
+        border-radius: 8px; background: rgba(8,19,29,.88); border: 1px solid rgba(255,255,255,.38);
+        color: #f5f9fc; font: 700 9px/13px ui-monospace, monospace; text-align: center;
+        opacity: .92; transition: opacity .18s ease;
+    }
+    .passenger.is-riding { z-index: 7; }
+    .passenger.is-riding .passenger-destination { opacity: 0; }
+    .passenger.is-riding .passenger-body { filter: saturate(.82); }
+    .passenger.is-waiting .passenger-body { animation: passenger-wait 1.5s ease-in-out infinite; }
+    .passenger.is-leaving { opacity: .34; filter: grayscale(.45) drop-shadow(0 2px 2px rgba(0,0,0,.3)); }
+    .passenger.is-leaving .passenger-destination { opacity: 0; }
+    @keyframes passenger-wait { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+    @media (prefers-reduced-motion: reduce) {
+        .elevator-car, .passenger, .elevator-door, .elevator-load { transition-duration: 1ms !important; }
+        .passenger.is-waiting .passenger-body { animation: none; }
+    }
     .metric { min-width: 105px; padding: 10px 14px; border-radius: 8px; background: #f4f7fa; text-align: center; }
     .metric-title { color: #60758a; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
     .metric-value { font-size: 20px; font-weight: 700; color: #17324d; }
@@ -373,7 +553,7 @@ def index_page() -> None:
                             {0.5: "0.5×", 1.0: "1×", 2.0: "2×", 4.0: "4×", 8.0: "8×"},
                             value=1.0,
                             label="Replay speed",
-                            on_change=lambda event: setattr(replay, "speed", float(event.value)),
+                            on_change=lambda event: replay.set_speed(float(event.value)),
                         ).classes("w-28")
                 replay.scene = ui.element("div").classes("elevator-scene mt-2")
                 with ui.row().classes("w-full gap-2 mt-3"):

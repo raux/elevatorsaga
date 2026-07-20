@@ -54,6 +54,7 @@ public final class TraceMain {
                 .append(",\"y\":").append(number(position[1]))
                 .append(",\"floor\":").append(elevator.currentFloor)
                 .append(",\"load\":").append(number(elevator.getLoadFactor()))
+                .append(",\"moving\":").append(elevator.isMoving)
                 .append(",\"up\":").append(elevator.goingUpIndicator)
                 .append(",\"down\":").append(elevator.goingDownIndicator)
                 .append('}');
@@ -71,6 +72,7 @@ public final class TraceMain {
                 .append(",\"from\":").append(user.currentFloor)
                 .append(",\"to\":").append(user.destinationFloor)
                 .append(",\"done\":").append(user.done)
+                .append(",\"riding\":").append(user.parent != null)
                 .append(",\"type\":").append(jsonString(user.displayType))
                 .append('}');
         }

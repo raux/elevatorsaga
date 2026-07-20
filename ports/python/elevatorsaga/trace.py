@@ -41,6 +41,7 @@ def snapshot(world, user_ids):
                 "y": round(y, 4),
                 "floor": elevator.current_floor,
                 "load": round(elevator.get_load_factor(), 4),
+                "moving": elevator.is_moving,
                 "up": elevator.going_up_indicator,
                 "down": elevator.going_down_indicator,
             }
@@ -59,6 +60,7 @@ def snapshot(world, user_ids):
                 "from": user.current_floor,
                 "to": user.destination_floor,
                 "done": user.done,
+                "riding": user.parent is not None,
                 "type": user.display_type,
             }
         )

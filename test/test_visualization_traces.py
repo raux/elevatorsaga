@@ -14,6 +14,9 @@ class VisualizationTraceTests(unittest.TestCase):
         first = trace["frames"][0]
         last = trace["frames"][-1]
         self.assertEqual(len(first["elevators"]), 1)
+        self.assertIn("moving", first["elevators"][0])
+        first_user = next(frame["users"][0] for frame in trace["frames"] if frame["users"])
+        self.assertIn("riding", first_user)
         self.assertGreater(last["time"], first["time"])
         self.assertIn("transported", last["stats"])
         self.assertIn("passed", trace["result"])
